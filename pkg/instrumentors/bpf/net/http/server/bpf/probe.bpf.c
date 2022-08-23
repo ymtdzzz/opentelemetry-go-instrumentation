@@ -12,6 +12,8 @@ struct http_request_t {
     u64 end_time;
     char method[MAX_SIZE];
     char path[MAX_SIZE];
+    char header[MAX_SIZE];
+    void* headerp;
 };
 
 struct {
@@ -29,6 +31,7 @@ struct {
 volatile const u64 method_ptr_pos;
 volatile const u64 url_ptr_pos;
 volatile const u64 path_ptr_pos;
+volatile const u64 header_ptr_pos;
 
 // This instrumentation attaches uprobe to the following function:
 // func (mux *ServeMux) ServeHTTP(w ResponseWriter, r *Request)
@@ -61,6 +64,16 @@ int uprobe_ServerMux_ServeHTTP(struct pt_regs *ctx) {
     path_size = path_size < path_len ? path_size : path_len;
     bpf_probe_read(&httpReq.path, path_size, path_ptr);
 
+    // get header from Request.Header
+    void* header_ptr = 0;
+    bpf_probe_read(&header_ptr, sizeof(header_ptr), (void *)(req_ptr+header_ptr_pos));
+    u64 header_len = 0;
+    bpf_probe_read(&header_len, sizeof(header_len), (void *)(req_ptr+(header_ptr_pos+8)));
+    u64 header_size = sizeof(httpReq.header);
+    header_size = header_size < header_len ? header_size : header_len;
+    bpf_probe_read(&httpReq.header, header_size, header_ptr);
+    httpReq.headerp = header_ptr;
+
     // Record goroutine
     httpReq.goroutine = get_current_goroutine();
 
@@ -80,6 +93,40 @@ int uprobe_ServerMux_ServeHTTP_Returns(struct pt_regs *ctx) {
     httpReq.end_time = bpf_ktime_get_ns();
     bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &httpReq, sizeof(httpReq));
     bpf_map_delete_elem(&goid_to_http_events, &goid);
+
+    return 0;
+}
+
+// This instrumentation attaches uprobe to the following function:
+// func (c *Client) Do(req *Request) (*Response, error)
+SEC("uprobe/Client_Do")
+int uprobe_Client_Do(struct pt_regs *ctx) {
+    s64 goid = get_current_goroutine();
+    void* httpReq_ptr = bpf_map_lookup_elem(&goid_to_http_events, &goid);
+    struct http_request_t httpReq = {};
+    bpf_probe_read(&httpReq, sizeof(httpReq), httpReq_ptr);
+
+    u64 request_pos = 2;
+
+    // Get request struct
+    void* req_ptr = get_argument(ctx, request_pos);
+
+    // get header from Request.Header
+    void* header_ptr = 0;
+    bpf_probe_read(&header_ptr, sizeof(header_ptr), (void *)(req_ptr+header_ptr_pos));
+    void* headerp_addr = (void *)(req_ptr+header_ptr_pos);
+
+    // modify http.Request.Header
+    //long success = bpf_probe_write_user(header_ptr, httpReq.header, sizeof(httpReq.header));
+    long success = bpf_probe_write_user(&headerp_addr, httpReq_ptr, sizeof(httpReq.headerp));
+
+    //bpf_printk("** RESULT %d", success);
+
+    //// Record goroutine
+    //httpReq.goroutine = get_current_goroutine();
+
+    //// Write event
+    //bpf_map_update_elem(&goid_to_http_events, &httpReq.goroutine, &httpReq, 0);
 
     return 0;
 }

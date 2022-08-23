@@ -1562,6 +1562,40 @@
               "version": "1.12"
             }
           ]
+        },
+        {
+          "struct": "net/http.Request",
+          "field_name": "Header",
+          "offsets": [
+            {
+              "offset": 56,
+              "version": "1.19"
+            },
+            {
+              "offset": 56,
+              "version": "1.18.5"
+            },
+            {
+              "offset": 56,
+              "version": "1.18.4"
+            },
+            {
+              "offset": 56,
+              "version": "1.18.3"
+            },
+            {
+              "offset": 56,
+              "version": "1.18.2"
+            },
+            {
+              "offset": 56,
+              "version": "1.18.1"
+            },
+            {
+              "offset": 56,
+              "version": "1.18"
+            }
+          ]
         }
       ]
     },

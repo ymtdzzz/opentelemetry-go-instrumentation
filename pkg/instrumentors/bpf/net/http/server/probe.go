@@ -28,6 +28,7 @@ type HttpEvent struct {
 	EndTime   uint64
 	Method    [100]byte
 	Path      [100]byte
+	Header    [100]byte
 }
 
 type httpServerInstrumentor struct {
@@ -46,7 +47,7 @@ func (h *httpServerInstrumentor) LibraryName() string {
 }
 
 func (h *httpServerInstrumentor) FuncNames() []string {
-	return []string{"net/http.(*ServeMux).ServeHTTP"}
+	return []string{"net/http.(*ServeMux).ServeHTTP", "net/http.(*Client).do"}
 }
 
 func (h *httpServerInstrumentor) Load(ctx *context.InstrumentorContext) error {
@@ -65,6 +66,11 @@ func (h *httpServerInstrumentor) Load(ctx *context.InstrumentorContext) error {
 			VarName:    "path_ptr_pos",
 			StructName: "net/url.URL",
 			Field:      "Path",
+		},
+		{
+			VarName:    "header_ptr_pos",
+			StructName: "net/http.Request",
+			Field:      "Header",
 		},
 	})
 
@@ -89,6 +95,18 @@ func (h *httpServerInstrumentor) Load(ctx *context.InstrumentorContext) error {
 
 	up, err := ctx.Executable.Uprobe("", h.bpfObjects.UprobeServerMuxServeHTTP, &link.UprobeOptions{
 		Offset: offset,
+	})
+	if err != nil {
+		return err
+	}
+
+	offsetc, err := ctx.TargetDetails.GetFunctionOffset(h.FuncNames()[1])
+	if err != nil {
+		return err
+	}
+
+	_, err = ctx.Executable.Uprobe("", h.bpfObjects.UprobeClientDo, &link.UprobeOptions{
+		Offset: offsetc,
 	})
 	if err != nil {
 		return err
